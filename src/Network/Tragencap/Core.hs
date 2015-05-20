@@ -12,6 +12,7 @@ module Network.Tragencap.Core where
 
 import Control.Applicative
 import Data.Either
+import Data.Binary.Get
 
 import qualified Data.ByteString.Lazy as BS
 
@@ -30,11 +31,37 @@ class Serial t where
     serial :: t -> BS.ByteString
     deserial :: BS.ByteString -> t
 
+type ParserResult t = Maybe (BS.ByteString, t)
+data Parser t = Parser { runParser :: BS.ByteString -> ParserResult t }
 
-class Parse t where
-    parse :: BS.ByteString -> Maybe (BS.ByteString, t)
+get2parser :: Get a -> Parser a
+get2parser get = Parser parser
+  where
+    parser str = case runGetOrFail get str of
+        (Left _) -> Nothing
+        (Right (bs, _, a)) -> Just (bs, a)
 
+liftParser :: (k :! t) => Parser k -> Parser t
+liftParser (Parser p) = Parser (\ bs -> lifting (p bs))
+  where
+    lifting (Just (bs', k)) = Just (bs', ainj k)
+    lifting Nothing = Nothing
 
+class SimpleParser a where
+    simpleParser :: Parser a
+
+class GetEncapsulatedParser t k where
+    getEncapsulatedParser :: t -> Parser k
+
+{-
+-- ???
+data Dom a = Dom
+
+class ((k :-> p) t) => Parse p t k where
+    parse :: Dom p -> BS.ByteString -> Maybe (BS.ByteString, t, Parser k)
+-}
+
+{-
 -- FIXME: directed parsig: parse of encr -> parser of encd
 instance (Parse a, Parse b) => Parse (a :? b) where
     parse str =     liftA (\ (bs, c) -> (bs, Inl c)) (parse str :: Maybe (BS.ByteString, a))
@@ -45,7 +72,7 @@ instance (Parse a, Parse b) => Parse (a :< b) where
         (str', encr) <- parse str
         (str'', encd) <- parse str'
         return (str'', encr :< encd)
-
+-}
 
 data l :? r = Inl l | Inr r
   deriving (Eq, Ord, Show)
@@ -75,6 +102,10 @@ instance (a :! c) => a :! (b :? c) where
     aprj (Inr a) = aprj a
     aprj (Inl _) = Nothing
 
+
+-- | Complex encapsulating / decapsulatig
+-- eprj : p1 :< p2 :< ... :< pn-1 :< pn :< ... :< pm ---> (p1 :< ... :< pn-1, pn :< ... :< pm)
+--        ^ sup                                            ^ su         ^ sub
 class (sub :-> sup) su where
     einj :: sub -> (su -> sup)
     eprj :: sup -> (su, sub)
