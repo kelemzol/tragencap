@@ -57,20 +57,16 @@ ethernetGetter :: Get Ethernet
 ethernetGetter = Ethernet <$> macAddrGetter <*> macAddrGetter <*> etherTypeGetter
 
 
--- data Parser t = Parser { runParser :: BS.ByteString -> Maybe (BS.ByteString, t) }
-ethernetParser :: Parser Ethernet
-ethernetParser = Parser $ undefined
-
 instance SimpleParser Ethernet where
     simpleParser = get2parser ethernetGetter
 
 instance ( Ipv4 :! k
-         , Arp :! k
-         , Payload :! k
+         , {-Arp :! k
+         , -}Payload :! k
          ) => GetEncapsulatedParser Ethernet k where
     getEncapsulatedParser ethernet = case ethernetEtherType ethernet of
-        EtherTypeIpv4 -> liftParser ipv4Parser
-        EtherTypeArp -> liftParser arpParser
+        --EtherTypeIpv4 -> liftParser ipv4Parser
+        --EtherTypeArp -> liftParser arpParser
         OtherEtherType _ -> liftParser payloadParser
 
 ipv4Parser :: Parser Ipv4
@@ -79,6 +75,16 @@ ipv4Parser = undefined
 arpParser :: Parser Arp
 arpParser = undefined
 
-payloadParser :: Parser Payload
-payloadParser = undefined
+instance SimpleParser Ipv4 where
+    simpleParser = ipv4Parser
+
+test :: SimpleParser (Ethernet :< (Payload :? Ipv4)) => a
+test = undefined
+
+test2 :: (SimpleParser Ethernet, SimpleParser Payload, SimpleParser Ipv4) => a
+test2 = undefined
+
+test3 :: (SimpleParser (Payload :? Ipv4)) => a
+test3 = undefined
+
 

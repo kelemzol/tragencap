@@ -5,6 +5,7 @@
            , TypeOperators
            , MultiParamTypeClasses
            , FlexibleInstances
+           , UndecidableInstances
            , ScopedTypeVariables
            #-}
 
@@ -47,16 +48,47 @@ liftParser (Parser p) = Parser (\ bs -> lifting (p bs))
     lifting (Just (bs', k)) = Just (bs', ainj k)
     lifting Nothing = Nothing
 
+parserEnc :: (GetEncapsulatedParser t k, SimpleParser k) => Parser t -> Parser (t :< k)
+parserEnc p = Parser $ \ bs -> do
+    (bs', t) <- runParser p bs
+    (bs'', k) <- runParser (getEncapsulatedParser t) bs'
+    return (bs'', t :< k)
+
 class SimpleParser a where
     simpleParser :: Parser a
 
 class GetEncapsulatedParser t k where
     getEncapsulatedParser :: t -> Parser k
 
-{-
--- ???
-data Dom a = Dom
+class BuildParser t where
+    buildParser :: Parser t
 
+instance (SimpleParser t, SimpleParser k, GetEncapsulatedParser t k) => SimpleParser (t :< k) where
+    simpleParser = parserEnc simpleParser
+
+instance (SimpleParser k, SimpleParser t) => SimpleParser (t :? k) where
+    simpleParser = Parser $ \ bs -> liftA (\ (bs, c) -> (bs, Inl c)) (runParser simpleParser bs :: Maybe (BS.ByteString, t))
+                                <|> liftA (\ (bs, c) -> (bs, Inr c)) (runParser simpleParser bs :: Maybe (BS.ByteString, k))
+
+
+{-
+-- u - set parser, t - result
+class Parse t prot where
+    parse :: Parser t -> BS.ByteString -> Maybe prot
+
+instance Parse t t where
+    parse p = (liftA snd) . runParser p
+
+instance (SimpleParser t, GetEncapsulatedParser t k) => Parse t (t :< k) where
+    parse p bs = do
+        (bs' :: BS.ByteString, t :: t) <- runParser p bs
+        k <- parse (getEncapsulatedParser t :: Parser k) bs'
+        return (t :< k)
+-}
+
+-- ???
+--data Dom a = Dom
+{-
 class ((k :-> p) t) => Parse p t k where
     parse :: Dom p -> BS.ByteString -> Maybe (BS.ByteString, t, Parser k)
 -}
