@@ -7,6 +7,8 @@
            , FlexibleInstances
            , UndecidableInstances
            , ScopedTypeVariables
+           , IncoherentInstances
+           , OverlappingInstances
            #-}
 
 module Network.Tragencap.Core where
@@ -48,7 +50,14 @@ liftParser (Parser p) = Parser (\ bs -> lifting (p bs))
     lifting (Just (bs', k)) = Just (bs', ainj k)
     lifting Nothing = Nothing
 
-parserEnc :: (GetEncapsulatedParser t k, SimpleParser k) => Parser t -> Parser (t :< k)
+liftParser' :: Parser k -> Parser (t :? k)
+liftParser' (Parser p) = Parser (\ bs -> lifting (p bs))
+  where
+    lifting :: ParserResult k -> ParserResult (t :? k)
+    lifting (Just (bs', k)) = Just (bs', Inr k)
+    lifting Nothing = Nothing
+
+parserEnc :: (GetEncapsulatedParser t k) => Parser t -> Parser (t :< k)
 parserEnc p = Parser $ \ bs -> do
     (bs', t) <- runParser p bs
     (bs'', k) <- runParser (getEncapsulatedParser t) bs'
@@ -60,15 +69,13 @@ class SimpleParser a where
 class GetEncapsulatedParser t k where
     getEncapsulatedParser :: t -> Parser k
 
-class BuildParser t where
-    buildParser :: Parser t
-
-instance (SimpleParser t, SimpleParser k, GetEncapsulatedParser t k) => SimpleParser (t :< k) where
-    simpleParser = parserEnc simpleParser
 
 instance (SimpleParser k, SimpleParser t) => SimpleParser (t :? k) where
     simpleParser = Parser $ \ bs -> liftA (\ (bs, c) -> (bs, Inl c)) (runParser simpleParser bs :: Maybe (BS.ByteString, t))
                                 <|> liftA (\ (bs, c) -> (bs, Inr c)) (runParser simpleParser bs :: Maybe (BS.ByteString, k))
+
+instance (SimpleParser t, SimpleParser k, GetEncapsulatedParser t k) => SimpleParser (t :< k) where
+    simpleParser = parserEnc simpleParser
 
 
 {-
@@ -134,10 +141,13 @@ instance (a :! c) => a :! (b :? c) where
     aprj (Inr a) = aprj a
     aprj (Inl _) = Nothing
 
+instance (k :! t) => k :! (t :< p) where
+    ainj = undefined
+    aprj = undefined
 
 -- | Complex encapsulating / decapsulatig
 -- eprj : p1 :< p2 :< ... :< pn-1 :< pn :< ... :< pm ---> (p1 :< ... :< pn-1, pn :< ... :< pm)
---        ^ sup                                            ^ su         ^ sub
+--        ^ sup                                            ^ su               ^ sub
 class (sub :-> sup) su where
     einj :: sub -> (su -> sup)
     eprj :: sup -> (su, sub)

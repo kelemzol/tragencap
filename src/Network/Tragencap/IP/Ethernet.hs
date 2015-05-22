@@ -60,13 +60,13 @@ ethernetGetter = Ethernet <$> macAddrGetter <*> macAddrGetter <*> etherTypeGette
 instance SimpleParser Ethernet where
     simpleParser = get2parser ethernetGetter
 
-instance ( Ipv4 :! k
-         , {-Arp :! k
-         , -}Payload :! k
+instance ( Payload :! k
+         , Arp :! k
+         , Ipv4 :! k
          ) => GetEncapsulatedParser Ethernet k where
     getEncapsulatedParser ethernet = case ethernetEtherType ethernet of
-        --EtherTypeIpv4 -> liftParser ipv4Parser
-        --EtherTypeArp -> liftParser arpParser
+        EtherTypeArp -> liftParser arpParser
+        EtherTypeIpv4 -> liftParser ipv4Parser
         OtherEtherType _ -> liftParser payloadParser
 
 ipv4Parser :: Parser Ipv4
@@ -78,13 +78,22 @@ arpParser = undefined
 instance SimpleParser Ipv4 where
     simpleParser = ipv4Parser
 
-test :: SimpleParser (Ethernet :< (Payload :? Ipv4)) => a
+instance SimpleParser Arp where
+    simpleParser = arpParser
+
+instance GetEncapsulatedParser k Payload where
+    getEncapsulatedParser _ = liftParser payloadParser
+
+test :: SimpleParser (Ethernet :< (Payload :? (Arp :< Payload) :? (Ipv4 :< Payload))) => a
 test = undefined
+
+test1 :: SimpleParser (Ethernet :< (Payload :? (Arp :< Payload))) => a
+test1 = undefined
 
 test2 :: (SimpleParser Ethernet, SimpleParser Payload, SimpleParser Ipv4) => a
 test2 = undefined
 
-test3 :: (SimpleParser (Payload :? Ipv4)) => a
+test3 :: (SimpleParser (Payload :? Ipv4 :? Arp)) => a
 test3 = undefined
 
 
